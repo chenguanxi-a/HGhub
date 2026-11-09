@@ -58,6 +58,8 @@ jobs:
           cargo build --target aarch64-apple-ios --release --lib
           mkdir -p gen/apple/Externals/arm64/release
           cp target/aarch64-apple-ios/release/libhuangguo_client_lib.a gen/apple/Externals/arm64/release/
+          # 工程模板里的链接项是 -lapp（正常由 `tauri ios build` 改写），这里直接补一份同名库
+          cp target/aarch64-apple-ios/release/libhuangguo_client_lib.a gen/apple/Externals/arm64/release/libapp.a
           ls -lh gen/apple/Externals/arm64/release/
 
       - name: 屏蔽 Xcode 的 Build Rust Code 脚本阶段
