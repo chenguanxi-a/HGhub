@@ -60,7 +60,7 @@ jobs:
           xcodebuild \
             -project "$PROJ" \
             -scheme "$SCHEME" \
-            -configuration Release \
+            -configuration release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           cd src-tauri/gen/apple
-          APP="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)"
+          APP="$(find build/Build/Products -maxdepth 2 -name '*.app' | head -1)"
           if [ -z "$APP" ]; then echo "::error::没找到 .app"; exit 1; fi
           echo "APP=$APP"
           V="$(node -p "require('./../../../package.json').version")"
