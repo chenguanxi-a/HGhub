@@ -44,7 +44,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: 前端产物
-        run: pnpm build
+        run: |
+          set -euo pipefail
+          pnpm build
+          du -sh dist
+          ls dist | head
 
       - name: 生成 iOS 工程
         env:
@@ -55,7 +59,8 @@ jobs:
         run: |
           set -euo pipefail
           cd src-tauri
-          cargo build --target aarch64-apple-ios --release --lib
+          # 必须带 custom-protocol，否则编出来的是 dev 模式（会去连 localhost:1420）
+          cargo build --target aarch64-apple-ios --release --lib --features tauri/custom-protocol
           mkdir -p gen/apple/Externals/arm64/release
           cp target/aarch64-apple-ios/release/libhuangguo_client_lib.a gen/apple/Externals/arm64/release/
           # 工程模板里的链接项是 -lapp（正常由 `tauri ios build` 改写），这里直接补一份同名库
@@ -129,6 +134,7 @@ jobs:
           APP="$(find build/Build/Products -maxdepth 2 -name '*.app' | head -1)"
           if [ -z "$APP" ]; then echo "::error::没找到 .app"; exit 1; fi
           echo "APP=$APP"
+          ls -lh "$APP/"
           V="$(node -p "require('./../../../package.json').version")"
           OUT="$RUNNER_TEMP/Payload"
           mkdir -p "$OUT"
