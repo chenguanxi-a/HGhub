@@ -53,7 +53,9 @@ jobs:
           echo "--- gen/apple 内容 ---"
           ls -1
           PROJ="$(ls -d *.xcodeproj | head -1)"
-          SCHEME="${PROJ%.xcodeproj}"
+          xcodebuild -project "$PROJ" -list
+          SCHEME="$(xcodebuild -project "$PROJ" -list -json \
+            | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["project"]["schemes"][0])')"
           echo "PROJ=$PROJ SCHEME=$SCHEME"
           xcodebuild \
             -project "$PROJ" \
