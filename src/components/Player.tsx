@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
-import { fmtTime, playlist } from "../api";
+import { fmtTime, isIos, playlist } from "../api";
 import { mediaResource, observeHls, usePlayerDiagnostics } from "../playbackDiagnostics";
 import { usePlaybackActivity } from "../usePlaybackActivity";
 import { useSeekInput } from "../useSeekInput";
@@ -60,15 +60,15 @@ export default function Player({
 
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
 
-    if (Hls.isSupported()) {
+    if (!isIos && Hls.isSupported()) {
       const hls = new Hls({
         // 禁用从插播/内容引导 JSON 派生直连 URL 的可选功能。
         interstitialsController: undefined,
         contentSteeringController: undefined,
         enableInterstitialPlayback: false,
-        enableWorker: true,
-        // Keep the same macOS seek workaround as the shared player.
-        preferManagedMediaSource: false,
+        enableWorker: !isIos,
+        // iOS 必须允许 ManagedMediaSource，否则 iPhone 上 hls.js 无法挂载媒体源
+        preferManagedMediaSource: isIos,
         autoStartLoad: false,
         lowLatencyMode: false,
         maxBufferLength: 24,
@@ -96,8 +96,8 @@ export default function Player({
         else { hls.destroy(); hlsRef.current = null; }
       });
     } else {
-      // Safari / 部分 WebView 原生支持 HLS
-      video.src = url;
+      // Safari / 部分 WebView 原生支持 HLS；iOS 下原生播放器不认 hg:// 自定义协议，改用上游地址
+      video.src = isIos ? src : url;
       if (autoPlay) activity.play("native_autoplay", true);
     }
 

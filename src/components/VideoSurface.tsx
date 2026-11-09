@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, forwardRef, useState } from "react";
 import Hls from "hls.js";
-import { isLocalMedia, playlist } from "../api";
+import { isIos, isLocalMedia, playlist } from "../api";
 import { mediaResource, observeHls, usePlayerDiagnostics } from "../playbackDiagnostics";
 import { usePlaybackActivity } from "../usePlaybackActivity";
 
@@ -84,7 +84,11 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
 
     const proxied = isLocalMedia(src);
     const url = proxied ? src : playlist(src);
-    const useHls = !url.includes("/seg?u=");
+    /* iPhone/iOS 上只有 ManagedMediaSource、没有标准 MediaSource，hls.js 必须优先用它；
+       若彻底没有 MSE（如 iOS < 17.1），原生播放器又吃不了 hg:// 自定义协议，退回直连上游地址。 */
+    const nativeUrl = isIos && !proxied ? src : url;
+    /* iOS：WKWebView 的自定义协议在 XHR/媒体栈里不可靠，直接交给原生 HLS 播放器（Safari 内核原生支持 m3u8） */
+    const useHls = isIos ? false : !url.includes("/seg?u=");
     trace("source.load", { engine: useHls && Hls.isSupported() ? "hls.js" : "native", auto_play: autoPlay, resource: mediaResource(src) });
 
     /* 换源时先把音量/倍速套回去：hls 重新 attach 后浏览器会把它们重置成默认值 */
@@ -103,9 +107,9 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         interstitialsController: undefined,
         contentSteeringController: undefined,
         enableInterstitialPlayback: false,
-        enableWorker: true,
-        // Prefer standard MSE on macOS; hls.js handles MMS-only fallback and seek recovery.
-        preferManagedMediaSource: false,
+        enableWorker: !isIos,
+        // iOS 必须允许 ManagedMediaSource，否则 iPhone 上 hls.js 无法挂载媒体源
+        preferManagedMediaSource: isIos,
         autoStartLoad: false,
         maxBufferLength: 30,
         backBufferLength: 30,
@@ -130,7 +134,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         else { hls.destroy(); hlsRef.current = null; }
       });
     } else {
-      video.src = url;
+      video.src = nativeUrl;
       if (autoPlay) activity.play("native_autoplay", true);
     }
 
