@@ -1,0 +1,93 @@
+name: iOS unsigned ipa
+
+# 手动触发：Actions 页面点 "Run workflow" 即出包。产物为未签名 .ipa（TrollStore / 自签可用）。
+on:
+  workflow_dispatch:
+
+env:
+  CI: "true"
+
+jobs:
+  ios:
+    name: iOS (unsigned ipa, arm64)
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ios
+
+      - name: 安装 xcodegen
+        run: brew install xcodegen
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 前端产物
+        run: pnpm build
+
+      - name: 生成 iOS 工程
+        env:
+          APPLE_DEVELOPMENT_TEAM: ABCDE12345
+        run: pnpm tauri ios init --ci
+
+      - name: xcodebuild（不签名）
+        run: |
+          set -euo pipefail
+          cd src-tauri/gen/apple
+          echo "--- gen/apple 内容 ---"
+          ls -1
+          PROJ="$(ls -d *.xcodeproj | head -1)"
+          SCHEME="${PROJ%.xcodeproj}"
+          echo "PROJ=$PROJ SCHEME=$SCHEME"
+          xcodebuild \
+            -project "$PROJ" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            EXPANDED_CODE_SIGN_IDENTITY=""
+
+      - name: 打包成 ipa
+        run: |
+          set -euo pipefail
+          cd src-tauri/gen/apple
+          APP="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$APP" ]; then echo "::error::没找到 .app"; exit 1; fi
+          echo "APP=$APP"
+          V="$(node -p "require('./../../../package.json').version")"
+          OUT="$RUNNER_TEMP/Payload"
+          mkdir -p "$OUT"
+          cp -R "$APP" "$OUT/"
+          cd "$RUNNER_TEMP"
+          zip -qry "HGhub_${V}_ios_unsigned.ipa" Payload
+          unzip -l "HGhub_${V}_ios_unsigned.ipa" | head -20
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          mv "HGhub_${V}_ios_unsigned.ipa" "$GITHUB_WORKSPACE/artifacts/"
+          ls -lh "$GITHUB_WORKSPACE/artifacts"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: artifacts/*.ipa
+          if-no-files-found: error
