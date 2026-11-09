@@ -4,5 +4,10 @@
     "iOS": {
       "minimumSystemVersion": "15.0"
     }
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: hg: https:; media-src 'self' blob: hg: https:; connect-src ipc: http://ipc.localhost https://ipc.localhost hg: https:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'"
+    }
   }
 }
