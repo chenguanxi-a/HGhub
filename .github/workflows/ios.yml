@@ -90,6 +90,24 @@ jobs:
           SCHEME="$(xcodebuild -project "$PROJ" -list -json \
             | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["project"]["schemes"][0])')"
           echo "PROJ=$PROJ SCHEME=$SCHEME"
+
+          # Rust 静态库里带 Tauri 的 Swift 桥接对象，最终链接需要 Swift 兼容库
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          TC="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos"
+          echo "SDK=$SDK"; echo "TC=$TC"
+          ls "$TC" 2>/dev/null | head -20 || true
+          ls "$SDK/usr/lib/swift" 2>/dev/null | head -20 || true
+          EXTRA=""
+          for d in "$TC" "$SDK/usr/lib/swift/iphoneos" "$SDK/usr/lib/swift"; do
+            if [ -f "$d/libswiftCompatibility56.a" ]; then
+              EXTRA="$EXTRA -L$d -lswiftCompatibility56"
+            fi
+            if [ -f "$d/libswiftCompatibilityConcurrency.a" ]; then
+              EXTRA="$EXTRA -L$d -lswiftCompatibilityConcurrency"
+            fi
+          done
+          echo "EXTRA=$EXTRA"
+
           xcodebuild \
             -project "$PROJ" \
             -scheme "$SCHEME" \
@@ -97,6 +115,7 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            OTHER_LDFLAGS="$EXTRA" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
