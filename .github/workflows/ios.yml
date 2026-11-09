@@ -1,6 +1,11 @@
 name: iOS unsigned ipa
 
-# 手动触发：Actions 页面点 "Run workflow" 即出包。产物为未签名 .ipa（TrollStore / 自签可用）。
+# 手动触发：Actions 页面点 "Run workflow" 即出包。
+# 产物为未签名 .ipa（TrollStore 直接安装，或用 Sideloadly/自签工具重签）。
+# 思路：不调用 `tauri ios build`（它需要签名凭证），而是
+#   1) 先 cargo 编出 aarch64-apple-ios 的静态库，放到工程期望的 Externals/arm64/release/
+#   2) 把 Xcode 工程里 "Build Rust Code" 脚本阶段替换成 echo，避免 tauri-cli 的 xcode-script 读不到 dev 地址文件而 panic
+#   3) xcodebuild 不签名构建，取出 .app 打包成 Payload/HGhub.app -> ipa
 on:
   workflow_dispatch:
 
@@ -11,7 +16,7 @@ jobs:
   ios:
     name: iOS (unsigned ipa, arm64)
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -46,12 +51,38 @@ jobs:
           APPLE_DEVELOPMENT_TEAM: ABCDE12345
         run: pnpm tauri ios init --ci
 
+      - name: 编译 Rust 静态库（arm64, release）
+        run: |
+          set -euo pipefail
+          cd src-tauri
+          cargo build --target aarch64-apple-ios --release --lib
+          mkdir -p gen/apple/Externals/arm64/release
+          cp target/aarch64-apple-ios/release/libhuangguo_client_lib.a gen/apple/Externals/arm64/release/
+          ls -lh gen/apple/Externals/arm64/release/
+
+      - name: 屏蔽 Xcode 的 Build Rust Code 脚本阶段
+        run: |
+          set -euo pipefail
+          cd src-tauri/gen/apple
+          PROJ="$(ls -d *.xcodeproj | head -1)"
+          python3 - "$PROJ/project.pbxproj" <<'PY'
+          import re, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          # 找到含 tauri ios xcode-script 的 shellScript 值并整体替换为 echo
+          pat = re.compile(r'shellScript = ("(?:[^"\\]|\\.)*");')
+          def repl(m):
+              return 'shellScript = "echo \\"skip rust build (prebuilt static lib)\\"";' if 'tauri ios xcode-script' in m.group(1) else m.group(0)
+          s2, n = pat.subn(repl, s)
+          open(p, 'w', encoding='utf-8').write(s2)
+          print("patched shell scripts:", n)
+          assert 'tauri ios xcode-script' not in open(p, encoding='utf-8').read(), "script phase not neutralized"
+          PY
+
       - name: xcodebuild（不签名）
         run: |
           set -euo pipefail
           cd src-tauri/gen/apple
-          echo "--- gen/apple 内容 ---"
-          ls -1
           PROJ="$(ls -d *.xcodeproj | head -1)"
           xcodebuild -project "$PROJ" -list
           SCHEME="$(xcodebuild -project "$PROJ" -list -json \
